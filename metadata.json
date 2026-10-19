@@ -1,0 +1,8 @@
+{
+  "name": "SONGKHLA AdminFlow",
+  "description": "ระบบต้นแบบสนับสนุนการจัดการข้อมูลและการประสานงานภาครัฐ - Prototype digital innovation for public-sector information management and coordination",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
