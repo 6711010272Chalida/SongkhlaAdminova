@@ -1,71 +1,149 @@
-import React, { useMemo } from 'react';
-import { WorkRecord } from '../types';
-import { CATEGORY_LABELS, STATUS_LABELS } from '../data/initialRecords';
+import React, { useState, useMemo } from 'react';
+import { 
+  Employee, 
+  TrainingCourse, 
+  TrainingRecord, 
+  UserRole 
+} from '../types';
+import { 
+  COURSE_CATEGORY_LABELS, 
+  POSITION_LEVEL_LABELS 
+} from '../data/initialRecords';
 import { 
   BarChart3, 
-  PieChart, 
-  TrendingUp, 
-  ShieldAlert, 
   Download, 
   Printer, 
+  Calendar, 
+  Filter, 
+  TrendingUp, 
+  Building2, 
+  Award, 
   Users, 
   CheckCircle2, 
-  Clock, 
-  AlertTriangle 
+  ShieldAlert,
+  FileSpreadsheet,
+  Clock,
+  Sparkles
 } from 'lucide-react';
 
 interface ReportsViewProps {
-  records: WorkRecord[];
+  employees: Employee[];
+  courses: TrainingCourse[];
+  records: TrainingRecord[];
+  userRole: UserRole;
 }
 
-export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
-  const stats = useMemo(() => {
-    const total = records.length;
-    const pending = records.filter(r => r.status === 'pending').length;
-    const inProgress = records.filter(r => r.status === 'in_progress').length;
-    const completed = records.filter(r => r.status === 'completed').length;
-    const cancelled = records.filter(r => r.status === 'cancelled').length;
+export const ReportsView: React.FC<ReportsViewProps> = ({
+  employees,
+  courses,
+  records,
+  userRole
+}) => {
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState('2569');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
-    // Category distribution
-    const categoryCounts: Record<string, number> = {};
-    Object.keys(CATEGORY_LABELS).forEach(k => { categoryCounts[k] = 0; });
-    records.forEach(r => {
-      categoryCounts[r.category] = (categoryCounts[r.category] || 0) + 1;
-    });
+  // Course map for lookup
+  const courseMap = useMemo(() => {
+    const map: Record<string, TrainingCourse> = {};
+    courses.forEach(c => { map[c.id] = c; });
+    return map;
+  }, [courses]);
 
-    // Officer workload
-    const officerCounts: Record<string, { total: number; completed: number; pending: number }> = {};
-    records.forEach(r => {
-      const name = r.responsiblePerson;
-      if (!officerCounts[name]) {
-        officerCounts[name] = { total: 0, completed: 0, pending: 0 };
+  // Filtered records by fiscal year or dates
+  const filteredRecords = useMemo(() => {
+    return records.filter(r => {
+      const crs = courseMap[r.courseId];
+      if (selectedFiscalYear !== 'all') {
+        if (!crs || String(crs.fiscalYear) !== selectedFiscalYear) return false;
       }
-      officerCounts[name].total += 1;
-      if (r.status === 'completed') officerCounts[name].completed += 1;
-      else officerCounts[name].pending += 1;
+      if (startDate && r.attendanceDate && r.attendanceDate < startDate) return false;
+      if (endDate && r.attendanceDate && r.attendanceDate > endDate) return false;
+      return true;
+    });
+  }, [records, courseMap, selectedFiscalYear, startDate, endDate]);
+
+  // Aggregate metrics
+  const stats = useMemo(() => {
+    const totalEmployees = employees.length;
+    const passedRecords = filteredRecords.filter(r => r.status === 'passed');
+    const totalTrainingHours = passedRecords.reduce((sum, r) => sum + (r.hoursCompleted || 0), 0);
+    const averageHours = totalEmployees > 0 ? (totalTrainingHours / totalEmployees).toFixed(1) : '0';
+
+    // Unique employees who completed training
+    const trainedEmployeeIds = new Set(passedRecords.map(r => r.employeeId));
+    const coverageRate = totalEmployees > 0 ? Math.round((trainedEmployeeIds.size / totalEmployees) * 100) : 0;
+
+    // Employees with >= 30 hours
+    const employeeHoursMap: Record<string, number> = {};
+    employees.forEach(e => { employeeHoursMap[e.id] = 0; });
+    passedRecords.forEach(r => {
+      employeeHoursMap[r.employeeId] = (employeeHoursMap[r.employeeId] || 0) + (r.hoursCompleted || 0);
+    });
+    const completedKpiCount = Object.values(employeeHoursMap).filter(h => h >= 30).length;
+    const kpiRate = totalEmployees > 0 ? Math.round((completedKpiCount / totalEmployees) * 100) : 0;
+
+    // Breakdown by department
+    const deptStats: Record<string, { totalEmp: number; totalHours: number; passedCount: number }> = {};
+    employees.forEach(e => {
+      if (!deptStats[e.department]) {
+        deptStats[e.department] = { totalEmp: 0, totalHours: 0, passedCount: 0 };
+      }
+      deptStats[e.department].totalEmp += 1;
     });
 
-    // Monthly breakdown
-    const monthlyCounts: Record<string, number> = {};
-    records.forEach(r => {
-      const month = r.receivedDate.substring(0, 7); // YYYY-MM
-      monthlyCounts[month] = (monthlyCounts[month] || 0) + 1;
+    passedRecords.forEach(r => {
+      const emp = employees.find(e => e.id === r.employeeId);
+      if (emp && deptStats[emp.department]) {
+        deptStats[emp.department].totalHours += (r.hoursCompleted || 0);
+        deptStats[emp.department].passedCount += 1;
+      }
     });
-
-    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
 
     return {
-      total,
-      pending,
-      inProgress,
-      completed,
-      cancelled,
-      categoryCounts,
-      officerCounts,
-      monthlyCounts,
-      completionRate
+      totalEmployees,
+      passedRecordsCount: passedRecords.length,
+      totalTrainingHours,
+      averageHours,
+      coverageRate,
+      completedKpiCount,
+      kpiRate,
+      deptStats
     };
-  }, [records]);
+  }, [employees, filteredRecords]);
+
+  // CSV Export (Excel Compatible with UTF-8 BOM)
+  const handleExportCSV = () => {
+    const headers = ['รหัสบุคลากร', 'ชื่อ-สกุล', 'ตำแหน่ง', 'กลุ่มงาน', 'รหัสหลักสูตร', 'ชื่อหลักสูตร', 'วันที่อบรม', 'ชั่วโมงอบรม', 'สถานะ', 'คะแนน', 'เลขที่วุฒิบัตร'];
+    const rows = filteredRecords.map(r => {
+      const emp = employees.find(e => e.id === r.employeeId);
+      const crs = courseMap[r.courseId];
+      return [
+        `"${emp?.empCode || ''}"`,
+        `"${emp ? `${emp.prefix}${emp.firstName} ${emp.lastName}` : ''}"`,
+        `"${emp?.position || ''}"`,
+        `"${emp?.department || ''}"`,
+        `"${crs?.courseCode || ''}"`,
+        `"${(crs?.title || '').replace(/"/g, '""')}"`,
+        `"${r.attendanceDate || r.registrationDate || ''}"`,
+        `"${r.hoursCompleted}"`,
+        `"${r.status === 'passed' ? 'ผ่านการอบรม' : r.status}"`,
+        `"${r.score || ''}"`,
+        `"${r.certificateNumber || ''}"`
+      ];
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `SONGKHLA_HRD_Report_FY${selectedFiscalYear}_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const handlePrint = () => {
     window.print();
@@ -76,193 +154,205 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-            <span>รายงานและสถิติภาพรวม</span>
+          <div className="flex items-center gap-2 text-xs text-[#718096] mb-1">
+            <span className="font-medium">การติดตามและรายงานผล</span>
             <span aria-hidden="true">·</span>
-            <span>รายงานเชิงวิเคราะห์จำลอง</span>
+            <span>ข้อมูลสถิติประมวลผลตามปีงบประมาณ</span>
           </div>
-          <h1 className="text-xl sm:text-2xl font-bold text-[#0F2038]">
-            รายงานสถิติการจัดการข้อมูลและติดตามงาน
+          <h1 className="text-2xl font-bold text-[#102C4C] tracking-tight">
+            รายงานสถิติการพัฒนาทรัพยากรบุคคล (HRD Analytics)
           </h1>
-          <p className="text-xs sm:text-sm text-slate-600 mt-1">
-            ประมวลผลสถิติจากระเบียนข้อมูลทั้งหมดในระบบจำลองเพื่อใช้ในการวิเคราะห์และนำเสนอ
+          <p className="text-sm text-[#718096] mt-0.5">
+            สรุปข้อมูลสถิติการเข้าร่วมอบรม ชั่วโมงการพัฒนา และความก้าวหน้าตามเกณฑ์มาตรฐาน ก.พ. 30 ชม./ปี
           </p>
         </div>
 
-        <button
-          onClick={handlePrint}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg shadow-xs transition-colors cursor-pointer self-start sm:self-auto"
-        >
-          <Printer className="w-4 h-4 text-slate-600" />
-          <span>พิมพ์รายงานฉบับนี้</span>
-        </button>
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          <button
+            onClick={handleExportCSV}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-[#102C4C] bg-white border border-[#E5EAF0] hover:bg-[#F3F6FA] rounded-xl shadow-xs transition-colors cursor-pointer"
+          >
+            <Download className="w-4 h-4 text-[#718096]" />
+            <span>ส่งออก CSV</span>
+          </button>
+          <button
+            onClick={handlePrint}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[#102C4C] hover:bg-[#245B91] rounded-xl shadow-xs transition-colors cursor-pointer"
+          >
+            <Printer className="w-4 h-4 text-[#C5A45A]" />
+            <span>พิมพ์รายงานสรุป</span>
+          </button>
+        </div>
       </div>
 
-      {/* Mandatory Demo Data Disclaimer Box */}
-      <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-4 flex items-start gap-3">
-        <ShieldAlert className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+      {/* Demo Disclaimer */}
+      <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-4 flex items-start gap-3">
+        <ShieldAlert className="w-4 h-4 text-[#D69E36] shrink-0 mt-0.5" />
         <div className="text-xs text-amber-900 leading-relaxed">
           <strong className="font-semibold block mb-0.5">
-            ประกาศคำเตือนข้อมูลสมมติ (Demo Data Disclaimer)
+            ประกาศคำเตือนข้อมูล (Report Disclaimer):
           </strong>
-          สถิติและตัวเลขทั้งหมดในรายงานนี้คำนวณจากชุดข้อมูลจำลองที่สร้างขึ้นเพื่อการสาธิตโครงงานนวัตกรรมเท่านั้น มิใช่สถิติผลการปฏิบัติงานจริงของส่วนราชการจังหวัดสงขลา หรือหน่วยงานใดๆ
+          รายงานฉบับนี้ประมวลผลจากฐานข้อมูลจำลองของระบบ SONGKHLA HRD เพื่อใช้สำหรับการประเมินโครงงานและการสาธิตนวัตกรรม ไม่ใช่สถิติผลการปฏิบัติงานจริงของศาลากลางจังหวัดสงขลา
         </div>
       </div>
 
-      {/* Key Metric Highlights Strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <span className="text-xs font-medium text-slate-500 block mb-1">ปริมาณงานสะสม</span>
-          <div className="text-2xl sm:text-3xl font-bold text-slate-900 font-mono-numbers">
-            {stats.total}
+      {/* Filter Strip */}
+      <div className="bg-white rounded-2xl border border-[#E5EAF0] p-4 sm:p-5 shadow-xs space-y-3">
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <div className="flex items-center gap-1.5 text-[#718096] font-semibold">
+            <Filter className="w-3.5 h-3.5" />
+            <span>ช่วงเวลาวิเคราะห์:</span>
           </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">เรื่องทั้งหมดในระบบ</span>
-        </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <span className="text-xs font-medium text-slate-500 block mb-1">อัตรางานแล้วเสร็จ</span>
-          <div className="text-2xl sm:text-3xl font-bold text-emerald-600 font-mono-numbers">
-            {stats.completionRate}%
+          <div className="flex items-center gap-1.5">
+            <span className="text-[#718096]">ปีงบประมาณ:</span>
+            <select
+              value={selectedFiscalYear}
+              onChange={(e) => setSelectedFiscalYear(e.target.value)}
+              className="px-3 py-1.5 rounded-lg border border-[#E5EAF0] bg-white text-[#102C4C] font-semibold cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#245B91]"
+            >
+              <option value="2569">พ.ศ. 2569 (ปีปัจจุบัน)</option>
+              <option value="2568">พ.ศ. 2568 (ปีย้อนหลัง)</option>
+              <option value="all">ทุกปีงบประมาณ</option>
+            </select>
           </div>
-          <span className="text-[11px] text-slate-400 mt-1 block font-mono-numbers">
-            {stats.completed} จาก {stats.total} เรื่อง
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[#718096]">ตั้งแต่วันที่:</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="px-3 py-1.5 rounded-lg border border-[#E5EAF0] bg-white text-[#1B2B3A] font-mono-numbers text-xs"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[#718096]">ถึงวันที่:</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="px-3 py-1.5 rounded-lg border border-[#E5EAF0] bg-white text-[#1B2B3A] font-mono-numbers text-xs"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 4 Quantitative Highlights */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-2xl border border-[#E5EAF0] p-5 shadow-xs">
+          <span className="text-xs font-medium text-[#718096] block mb-1">ชั่วโมงอบรมรวมสะสม</span>
+          <div className="text-2xl sm:text-3xl font-bold text-[#102C4C] font-mono-numbers">
+            {stats.totalTrainingHours} <span className="text-xs font-normal text-[#718096]">ชม.</span>
+          </div>
+          <span className="text-[11px] text-[#718096] mt-1 block">
+            เฉลี่ย <strong className="font-mono-numbers text-[#102C4C]">{stats.averageHours}</strong> ชม./คน
           </span>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <span className="text-xs font-medium text-slate-500 block mb-1">งานที่กำลังดำเนินการ</span>
-          <div className="text-2xl sm:text-3xl font-bold text-sky-600 font-mono-numbers">
-            {stats.inProgress}
+        <div className="bg-white rounded-2xl border border-[#E5EAF0] p-5 shadow-xs">
+          <span className="text-xs font-medium text-[#718096] block mb-1">อัตราการเข้าถึงการอบรม</span>
+          <div className="text-2xl sm:text-3xl font-bold text-[#245B91] font-mono-numbers">
+            {stats.coverageRate}%
           </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">อยู่ระหว่างประสานงาน</span>
+          <span className="text-[11px] text-[#718096] mt-1 block">
+            ได้รับการพัฒนาแล้วอย่างน้อย 1 ครั้ง
+          </span>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <span className="text-xs font-medium text-slate-500 block mb-1">งานรอดำเนินการ</span>
-          <div className="text-2xl sm:text-3xl font-bold text-amber-600 font-mono-numbers">
-            {stats.pending}
+        <div className="bg-white rounded-2xl border border-[#E5EAF0] p-5 shadow-xs">
+          <span className="text-xs font-medium text-[#718096] block mb-1">ผ่านเกณฑ์ ก.พ. (≥30 ชม.)</span>
+          <div className="text-2xl sm:text-3xl font-bold text-[#23865B] font-mono-numbers">
+            {stats.completedKpiCount} <span className="text-xs font-normal text-[#718096]">คน</span>
           </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">รอตรวจสอบ/สั่งการ</span>
-        </div>
-      </div>
-
-      {/* Visual Section: Charts 2-column Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Chart 1: Category Distribution */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">การกระจายตัวของประเภทงาน</h2>
-              <p className="text-xs text-slate-500">สัดส่วนภารกิจงานที่รับเข้าสู่ระบบ</p>
-            </div>
-            <BarChart3 className="w-5 h-5 text-slate-400" />
-          </div>
-
-          <div className="space-y-4 pt-2">
-            {Object.entries(CATEGORY_LABELS).map(([catKey, catInfo]) => {
-              const count = stats.categoryCounts[catKey] || 0;
-              const maxVal = Math.max(...Object.values(stats.categoryCounts), 1);
-              const percentage = Math.round((count / (stats.total || 1)) * 100);
-              const barWidth = Math.round((count / maxVal) * 100);
-
-              return (
-                <div key={catKey} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-medium text-slate-800">{catInfo.labelTh}</span>
-                    <span className="font-mono-numbers text-slate-600 font-semibold">
-                      {count} เรื่อง ({percentage}%)
-                    </span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-                    <div 
-                      className="bg-[#0F2038] h-full rounded-full transition-all duration-300"
-                      style={{ width: `${Math.max(barWidth, count > 0 ? 5 : 0)}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <span className="text-[11px] text-[#23865B] font-semibold mt-1 block font-mono-numbers">
+            คิดเป็น {stats.kpiRate}% ของบุคลากรทั้งหมด
+          </span>
         </div>
 
-        {/* Chart 2: Officer Workload Analysis */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">การกระจายภาระงานตามผู้รับผิดชอบ</h2>
-              <p className="text-xs text-slate-500">ภาระงานสะสมของเจ้าหน้าที่ (ชื่อจำลอง)</p>
-            </div>
-            <Users className="w-5 h-5 text-slate-400" />
+        <div className="bg-white rounded-2xl border border-[#E5EAF0] p-5 shadow-xs">
+          <span className="text-xs font-medium text-[#718096] block mb-1">วุฒิบัตรที่ผ่านการรับรอง</span>
+          <div className="text-2xl sm:text-3xl font-bold text-[#C5A45A] font-mono-numbers">
+            {stats.passedRecordsCount} <span className="text-xs font-normal text-[#718096]">ฉบับ</span>
           </div>
-
-          <div className="space-y-3 pt-2">
-            {Object.entries(stats.officerCounts).map(([officer, data]) => {
-              const completedPct = data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0;
-              return (
-                <div key={officer} className="p-3 bg-slate-50 rounded-lg border border-slate-200/80 text-xs space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-slate-800">{officer}</span>
-                    <span className="font-mono-numbers text-slate-600 font-medium">
-                      รวม {data.total} เรื่อง
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between text-[11px] text-slate-500">
-                    <span className="text-emerald-700">เสร็จ {data.completed} เรื่อง</span>
-                    <span className="text-amber-700">คงค้าง {data.pending} เรื่อง</span>
-                    <span className="font-mono-numbers font-medium text-slate-700">สำเร็จ {completedPct}%</span>
-                  </div>
-
-                  {/* Progress track */}
-                  <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden flex">
-                    <div 
-                      className="bg-emerald-500 h-full transition-all"
-                      style={{ width: `${completedPct}%` }}
-                    />
-                    <div 
-                      className="bg-amber-400 h-full transition-all"
-                      style={{ width: `${100 - completedPct}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <span className="text-[11px] text-[#718096] mt-1 block">
+            ผ่านการตรวจรับรองผลสมบูรณ์
+          </span>
         </div>
       </div>
 
-      {/* Monthly Influx Comparison */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <div className="flex items-center justify-between mb-4">
+      {/* Department Breakdown Table */}
+      <div className="bg-white rounded-2xl border border-[#E5EAF0] overflow-hidden shadow-xs">
+        <div className="px-6 py-4 border-b border-[#E5EAF0] flex items-center justify-between">
           <div>
-            <h2 className="text-base font-bold text-slate-900">สถิติปริมาณงานรับเข้าจำแนกตามเดือน</h2>
-            <p className="text-xs text-slate-500">แนวโน้มการรับเรื่องเข้าสู่ระบบ (จำลองปี 2569)</p>
+            <h2 className="text-base font-bold text-[#102C4C]">
+              รายงานสถิติการพัฒนาจำแนกตามกลุ่มงาน / ส่วนราชการ
+            </h2>
+            <p className="text-xs text-[#718096]">
+              เปรียบเทียบชั่วโมงการอบรมเฉลี่ยและจำนวนครั้งการผ่านหลักสูตรของแต่ละกลุ่มงาน
+            </p>
           </div>
-          <TrendingUp className="w-5 h-5 text-slate-400" />
+          <Building2 className="w-5 h-5 text-[#718096]" />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {Object.entries(stats.monthlyCounts).map(([month, count]) => {
-            const [y, m] = month.split('-');
-            const monthNames: Record<string, string> = {
-              '09': 'กันยายน 2569 (ก.ย.)',
-              '10': 'ตุลาคม 2569 (ต.ค.)',
-              '11': 'พฤศจิกายน 2569 (พ.ย.)'
-            };
-            const label = monthNames[m] || `${month}`;
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead className="bg-[#F3F6FA] text-[#718096] border-b border-[#E5EAF0] uppercase tracking-wider text-[11px]">
+              <tr>
+                <th className="py-3 px-4 font-semibold">กลุ่มงาน / สังกัด</th>
+                <th className="py-3 px-4 font-semibold text-center">จำนวนบุคลากร</th>
+                <th className="py-3 px-4 font-semibold text-center">หลักสูตรที่ผ่าน</th>
+                <th className="py-3 px-4 font-semibold text-center">ชั่วโมงรวม</th>
+                <th className="py-3 px-4 font-semibold text-center">เฉลี่ย/คน</th>
+                <th className="py-3 px-4 font-semibold text-right">เกณฑ์ 30 ชม.</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#E5EAF0]">
+              {Object.entries(stats.deptStats).map(([deptName, dData]) => {
+                const avgHours = dData.totalEmp > 0 ? (dData.totalHours / dData.totalEmp).toFixed(1) : '0';
+                const progressPct = Math.min(100, Math.round((Number(avgHours) / 30) * 100));
 
-            return (
-              <div key={month} className="p-4 rounded-lg bg-slate-50 border border-slate-200">
-                <span className="text-xs font-semibold text-slate-600 block mb-1">{label}</span>
-                <div className="text-xl sm:text-2xl font-bold text-[#0F2038] font-mono-numbers">
-                  {count} <span className="text-xs font-normal text-slate-500">เรื่อง</span>
-                </div>
-                <div className="mt-2 text-[11px] text-slate-500">
-                  สัดส่วน {Math.round((count / (stats.total || 1)) * 100)}% ของงานทั้งหมด
-                </div>
-              </div>
-            );
-          })}
+                return (
+                  <tr key={deptName} className="hover:bg-[#F3F6FA]/70 transition-colors">
+                    <td className="py-3 px-4 font-bold text-[#102C4C]">
+                      {deptName}
+                    </td>
+
+                    <td className="py-3 px-4 font-mono-numbers text-center text-[#1B2B3A]">
+                      {dData.totalEmp} คน
+                    </td>
+
+                    <td className="py-3 px-4 font-mono-numbers text-center text-[#23865B] font-semibold">
+                      {dData.passedCount} รายการ
+                    </td>
+
+                    <td className="py-3 px-4 font-mono-numbers text-center font-bold text-[#102C4C]">
+                      {dData.totalHours} ชม.
+                    </td>
+
+                    <td className="py-3 px-4 font-mono-numbers text-center text-[#C5A45A] font-bold">
+                      {avgHours} ชม.
+                    </td>
+
+                    <td className="py-3 px-4 text-right">
+                      <div className="inline-flex items-center gap-2">
+                        <div className="w-20 bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                          <div 
+                            className={`h-full rounded-full ${Number(avgHours) >= 30 ? 'bg-[#23865B]' : 'bg-[#D69E36]'}`}
+                            style={{ width: `${progressPct}%` }}
+                          />
+                        </div>
+                        <span className="font-mono-numbers text-[11px] text-[#718096] font-semibold">
+                          {progressPct}%
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

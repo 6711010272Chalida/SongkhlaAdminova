@@ -1,6 +1,7 @@
-# SONGKHLA AdminFlow
-> **ระบบต้นแบบสนับสนุนการจัดการข้อมูลและการประสานงานภาครัฐ**  
-> *Prototype Digital Innovation for Public-Sector Information Management and Coordination*
+# SONGKHLA HRD
+> **ระบบทะเบียนและติดตามการพัฒนาทรัพยากรบุคคลจังหวัดสงขลา**  
+> *Songkhla Provincial Human Resource Development System (Prototype)*  
+> **หน่วยงานเป้าหมาย:** ศาลากลางจังหวัดสงขลา ฝ่ายทรัพยากรบุคคล
 
 [![Vercel Deployment Ready](https://img.shields.io/badge/Vercel-Deployment%20Ready-black?logo=vercel)](https://vercel.com)
 [![Vite](https://img.shields.io/badge/Vite-8.x-646CFF?logo=vite)](https://vitejs.dev)
@@ -9,79 +10,72 @@
 
 ---
 
-## 📌 สถานะโครงการ (Project Status & Disclaimer)
-**DEMO • ข้อมูลสมมติ • ยังไม่ใช่ระบบราชการจริง**  
-โครงงานนี้เป็นผลงานนวัตกรรมต้นแบบแนวคิด (Student Innovation Prototype) ที่จัดทำขึ้นเพื่อการศึกษาและการนำเสนอผลงานทางวิชาการ มิใช่ระบบงานราชการจริงของศาลากลางจังหวัดสงขลา และไม่มีการเชื่อมต่อกับฐานข้อมูลลับหรือระบบสารบรรณอิเล็กทรอนิกส์จริง ข้อมูลทั้งหมดเป็นข้อมูลจำลอง (Fictional Demo Data)
+## 📌 สถานะโครงการและคำชี้แจง (Disclaimer)
+**DEMO • ข้อมูลสมมติ • เพื่อการศึกษาและสาธิตนวัตกรรม ไม่ใช่ระบบราชการจริง**  
+ระบบนี้เป็นนวัตกรรมต้นแบบทางเทคโนโลยีดิจิทัลที่จัดทำขึ้นเพื่อการศึกษาและการนำเสนอผลงานทางวิชาการ มิใช่ระบบงานราชการจริงของศาลากลางจังหวัดสงขลา และไม่มีการเชื่อมต่อกับฐานข้อมูลข้าราชการหรือระบบสารบรรณจริง ข้อมูลและชื่อบุคคลทั้งหมดเป็นข้อมูลสมมติ (Fictional Demo Data)
 
 ---
 
-## 🚀 วิธีการนำขึ้น GitHub และรันบน Vercel (Step-by-Step)
+## 🎯 8 ระบบงานหลัก (Core Modules)
 
-### 1. วิธีการนำโค้ดขึ้น GitHub (Push to GitHub)
+1. **ภาพรวมระบบ (Dashboard)**
+   - สรุปตัวชี้วัดสำคัญ: จำนวนบุคลากร, หลักสูตร, ผู้ผ่านการอบรม, ผู้กำลังพัฒนา, และชั่วโมงอบรมสะสม
+   - กราฟสถิติการเข้าร่วมอบรมรายเดือน (Interactive Bar Chart)
+   - แผนภูมิการพัฒนาตามหมวดหมู่สมรรถนะ
+   - การแจ้งเตือนงาน HR (บุคลากรที่ยังไม่ครบเกณฑ์ ก.พ. 30 ชม./ปี)
+   - ปฏิทินหลักสูตรที่กำลังจะจัดขึ้น และประวัติกิจกรรมล่าสุด
 
-1. เปิด [GitHub.com](https://github.com) และกด **New Repository**
-2. ตั้งชื่อ Repository เช่น `songkhla-adminflow` (เลือก Public หรือ Private ตามต้องการ)
-3. รันคำสั่งต่อไปนี้ใน Terminal เพื่อเชื่อมโยงและ Push โค้ด:
+2. **ข้อมูลบุคลากร (Personnel Directory)**
+   - ทะเบียนข้าราชการและบุคลากรในสังกัดศาลากลางจังหวัดสงขลา
+   - เพิ่ม แก้ไข ลบ ค้นหา และกรองตามกลุ่มงาน/ระดับตำแหน่ง/สถานะ
+   - หน้ารายละเอียดรายบุคคลพร้อมสรุปชั่วโมงและหลักสูตรที่ผ่าน
 
+3. **หลักสูตรและโครงการพัฒนา (Training & Development)**
+   - ทะเบียนหลักสูตรฝึกอบรม สัมมนา และการพัฒนาทักษะวิชาชีพ
+   - กำหนดจำนวนชั่วโมง, กลุ่มเป้าหมาย, สถานที่จัด, และวัตถุประสงค์
+   - แสดงรายชื่อผู้เข้าอบรมในแต่ละโครงการ
+
+4. **การเข้าร่วมฝึกอบรม (Attendance & Tracking)**
+   - บันทึกการลงทะเบียนและการเข้าร่วมของบุคลากรรายหลักสูตร
+   - บันทึกผลการประเมิน (คะแนน, เกรด, เลขที่วุฒิบัตร)
+   - ปรับปรุงสถานะแบบเรียลไทม์
+
+5. **ประวัติการพัฒนา (Competency Passport)**
+   - สมุดประวัติการพัฒนาตนเองรายบุคคล (Transcript)
+   - ตรวจสอบความก้าวหน้าตามเกณฑ์มาตรฐาน ก.พ. (30 ชั่วโมง/ปี)
+   - สรุปชั่วโมงจำแนกตามกลุ่มสมรรถนะ
+   - รองรับการพิมพ์สมุดประวัติเพื่อใช้ประกอบการประเมินเลื่อนขั้น
+
+6. **คลังเอกสารและหลักฐาน (Evidence Repository)**
+   - จัดเก็บวุฒิบัตร, เอกสารประกอบการบรรยาย, และเอกสารโครงการ
+   - ดาวน์โหลดไฟล์ตัวอย่างและแยกหมวดหมู่ชัดเจน
+   - สถาปัตยกรรมพร้อมเชื่อมต่อ Cloud Storage
+
+7. **รายงานและสถิติ (Reports & Analytics)**
+   - รายงานสถิติการพัฒนาจำแนกตามกลุ่มงาน/ส่วนราชการ
+   - วิเคราะห์อัตราการเข้าถึงการอบรมและอัตราผ่านเกณฑ์ 30 ชั่วโมง
+   - ส่งออกข้อมูลเป็นไฟล์ CSV (Excel Compatible UTF-8 BOM)
+   - รองรับการพิมพ์รายงานฉบับทางการ
+
+8. **ตั้งค่าระบบ (System Administration)**
+   - ข้อมูลหน่วยงานศาลากลางจังหวัดสงขลา
+   - สลับบทบาทสิทธิ์: ผู้ดูแลระบบ (Administrator) vs เจ้าหน้าที่ (Officer)
+   - สลับโหมด: โหมดสาธิต (Demo Mode) vs โหมดใช้งานจริง (Real Mode)
+   - สำรองข้อมูล (Export JSON) และกู้คืนข้อมูล (Import JSON)
+   - รายงานสถานะความพร้อมในการเชื่อมต่อ Firebase Firestore
+
+---
+
+## 🚀 วิธีการนำขึ้น GitHub และรันบน Vercel
+
+### 1. นำโค้ดขึ้น GitHub (Push to GitHub)
 ```bash
-# 1. เชื่อมต่อกับ Repository ของคุณบน GitHub (แทนที่ <YOUR_USERNAME> ด้วย username ของคุณ)
-git remote add origin https://github.com/<YOUR_USERNAME>/songkhla-adminflow.git
-
-# 2. ทำการ Push ขึ้น branch main
+git remote add origin https://github.com/<YOUR_USERNAME>/songkhla-hrd.git
+git branch -M main
 git push -u origin main
 ```
 
-*(หากมีการแก้ไขไฟล์เพิ่มเติมในภายหลัง: `git add .` -> `git commit -m "update"` -> `git push`)*
-
----
-
-### 2. วิธีการรันและ Deploy บน Vercel (Deploy to Vercel)
-
-โปรเจกต์นี้ได้รับการตั้งค่าไฟล์ `vercel.json` สำหรับ Vite SPA ไว้เรียบร้อยแล้ว:
-
-#### วิธีที่ 1: ผ่าน Vercel Dashboard (แนะนำที่สุด - ง่ายและอัปเดตอัตโนมัติ)
-1. เข้าไปที่ [vercel.com](https://vercel.com) แล้วเข้าสู่ระบบด้วยบัญชี GitHub ของคุณ
-2. คลิกปุ่ม **"Add New..."** ➔ เลือก **"Project"**
-3. ค้นหาและกด **"Import"** Repository `songkhla-adminflow` ที่เพิ่ง Push ขึ้นไป
-4. Vercel จะตรวจจับการตั้งค่าอัตโนมัติ:
-   - **Framework Preset**: `Vite`
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `dist`
-   - **Install Command**: `npm install`
-5. กดปุ่ม **"Deploy"** 
-6. รอประมาณ 30-45 วินาที ระบบจะสร้างลิงก์เว็บไซต์พร้อมใช้งาน เช่น `https://songkhla-adminflow.vercel.app` 🎉
-
-#### วิธีที่ 2: ผ่าน Vercel CLI (สำหรับสาย Command Line)
-```bash
-# ติดตั้ง Vercel CLI และ Deploy ทันที
-npx vercel
-
-# เมื่อต้องการ Deploy ขึ้น Production
-npx vercel --prod
-```
-
----
-
-## 💻 การรันบนเครื่อง Local (Local Development)
-
-```bash
-# ติดตั้ง dependencies
-npm install
-
-# รันโหมด Development (เปิดที่ http://localhost:3000)
-npm run dev
-
-# ทดสอบ Build เป็น Production Files
-npm run build
-
-# ทดสอบรันไฟล์ Build (Preview)
-npm run preview
-```
-
----
-
-## 🛠️ โครงสร้างไฟล์สำคัญสำหรับ Vercel
-- `vercel.json`: กำหนด routing rewrite เพื่อรองรับ Single Page Application (SPA) บน Vercel
-- `vite.config.ts`: ปรับแต่ง alias และ bundler ให้พร้อมสำหรับ production build
-- `.gitignore`: ยกเว้น `.vercel/`, `node_modules/`, `dist/` จาก git repository
-- `package.json`: มี scripts `build`, `dev`, `preview` ครบถ้วน
+### 2. รันบน Vercel
+1. เข้าไปที่ [Vercel.com](https://vercel.com) แล้ว Import Repository
+2. ระบบจะตรวจจับการตั้งค่า `Vite` และ `vercel.json` โดยอัตโนมัติ
+3. กดปุ่ม **Deploy**
