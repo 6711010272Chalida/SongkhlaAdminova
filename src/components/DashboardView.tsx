@@ -1,642 +1,451 @@
-import React, { useState, useMemo } from 'react';
-import { 
-  Employee, 
-  TrainingCourse, 
-  TrainingRecord, 
-  ActiveTab, 
-  UserRole,
-  AuditLog
-} from '../types';
-import { 
-  COURSE_CATEGORY_LABELS, 
-  ATTENDANCE_STATUS_LABELS, 
-  EMPLOYEE_STATUS_LABELS 
-} from '../data/initialRecords';
-import { 
-  Users, 
-  BookOpen, 
-  CheckCircle2, 
-  Clock, 
-  Calendar, 
-  Award, 
-  AlertTriangle, 
-  TrendingUp, 
-  ArrowRight, 
-  PlusCircle, 
-  Building2, 
-  FileCheck,
-  ChevronRight,
-  ShieldCheck,
-  Download,
-  Printer,
-  Sparkles,
-  BarChart3,
-  CalendarDays
+import React, { useState, useEffect, useMemo } from 'react';
+import { ActiveTab, ComplaintRecord } from '../types';
+import { CATEGORY_META, STATUS_META, URGENCY_META } from '../data/mockComplaints';
+import { formatThaiDate, formatThaiMonthLabel, isComplaintOverdue } from '../services/storageService';
+import {
+  FileText,
+  Inbox,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  ArrowRight,
+  FilePlus2,
+  Calendar,
+  Building2,
+  Eye
 } from 'lucide-react';
 
 interface DashboardViewProps {
-  employees: Employee[];
-  courses: TrainingCourse[];
-  records: TrainingRecord[];
-  logs: AuditLog[];
-  userRole: UserRole;
+  complaints: ComplaintRecord[];
+  officerName: string;
   onNavigateTab: (tab: ActiveTab) => void;
-  onOpenQuickAction: (action: 'employee' | 'course' | 'attendance') => void;
-  onSelectEmployee: (emp: Employee) => void;
-  onSelectCourse: (course: TrainingCourse) => void;
-  globalSearchQuery?: string;
+  onSelectComplaintDetail: (complaint: ComplaintRecord) => void;
+  onFilterOverdueInRegistry: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
-  employees,
-  courses,
-  records,
-  logs,
-  userRole,
+  complaints,
+  officerName,
   onNavigateTab,
-  onOpenQuickAction,
-  onSelectEmployee,
-  onSelectCourse,
-  globalSearchQuery = ''
+  onSelectComplaintDetail,
+  onFilterOverdueInRegistry
 }) => {
-  const [selectedFiscalYear, setSelectedFiscalYear] = useState('2569');
+  const [now, setNow] = useState(() => new Date());
 
-  // Filter courses by fiscal year if selected
-  const activeCourses = useMemo(() => {
-    if (selectedFiscalYear === 'all') return courses;
-    return courses.filter(c => String(c.fiscalYear) === selectedFiscalYear);
-  }, [courses, selectedFiscalYear]);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-  // Dynamically calculate metrics
-  const metrics = useMemo(() => {
-    const totalEmployees = employees.length;
-    const totalCourses = activeCourses.length;
+  const thaiDateTimeStr = useMemo(() => {
+    const datePart = now.toLocaleDateString('th-TH', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+    const timePart = now.toLocaleTimeString('th-TH', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+    return { datePart, timePart };
+  }, [now]);
 
-    // Distinct passed employees
-    const passedEmployeeIds = new Set(
-      records.filter(r => r.status === 'passed').map(r => r.employeeId)
-    );
-    const passedEmployeesCount = passedEmployeeIds.size;
-
-    // In training/development
-    const inDevelopmentCount = records.filter(
-      r => r.status === 'registered' || r.status === 'attending'
+  // Real calculated KPI counts
+  const kpis = useMemo(() => {
+    const total = complaints.length;
+    const newCount = complaints.filter((c) => c.status === 'new').length;
+    const activeInProgress = complaints.filter((c) =>
+      ['investigating', 'coordinating', 'in_progress', 'waiting_info'].includes(c.status)
     ).length;
-
-    // Total training hours
-    const totalHoursDelivered = records
-      .filter(r => r.status === 'passed')
-      .reduce((sum, r) => sum + (r.hoursCompleted || 0), 0);
-
-    const averageHoursPerEmployee = totalEmployees > 0 
-      ? (totalHoursDelivered / totalEmployees).toFixed(1) 
-      : '0.0';
-
-    // Upcoming courses
-    const upcomingCourses = activeCourses
-      .filter(c => c.status === 'upcoming')
-      .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
-
-    // Category distribution
-    const categoryCounts: Record<string, number> = {};
-    Object.keys(COURSE_CATEGORY_LABELS).forEach(k => { categoryCounts[k] = 0; });
-    activeCourses.forEach(c => {
-      categoryCounts[c.category] = (categoryCounts[c.category] || 0) + 1;
-    });
-
-    // Monthly attendance aggregation
-    const monthlyStats: Record<string, { monthName: string; count: number; hours: number }> = {
-      '01': { monthName: 'ม.ค.', count: 0, hours: 0 },
-      '02': { monthName: 'ก.พ.', count: 0, hours: 0 },
-      '03': { monthName: 'มี.ค.', count: 0, hours: 0 },
-      '04': { monthName: 'เม.ย.', count: 0, hours: 0 },
-      '05': { monthName: 'พ.ค.', count: 0, hours: 0 },
-      '06': { monthName: 'มิ.ย.', count: 0, hours: 0 },
-      '07': { monthName: 'ก.ค.', count: 0, hours: 0 },
-      '08': { monthName: 'ส.ค.', count: 0, hours: 0 },
-      '09': { monthName: 'ก.ย.', count: 0, hours: 0 },
-      '10': { monthName: 'ต.ค.', count: 0, hours: 0 },
-      '11': { monthName: 'พ.ย.', count: 0, hours: 0 },
-      '12': { monthName: 'ธ.ค.', count: 0, hours: 0 },
-    };
-
-    records.forEach(r => {
-      const date = r.attendanceDate || r.registrationDate;
-      if (date && date.includes('-')) {
-        const month = date.split('-')[1];
-        if (monthlyStats[month]) {
-          monthlyStats[month].count += 1;
-          if (r.status === 'passed') {
-            monthlyStats[month].hours += (r.hoursCompleted || 0);
-          }
-        }
-      }
-    });
-
-    // Department progress breakdown
-    const deptStats: Record<string, { totalEmp: number; totalHours: number }> = {};
-    employees.forEach(e => {
-      if (!deptStats[e.department]) {
-        deptStats[e.department] = { totalEmp: 0, totalHours: 0 };
-      }
-      deptStats[e.department].totalEmp += 1;
-    });
-    records.filter(r => r.status === 'passed').forEach(r => {
-      const emp = employees.find(e => e.id === r.employeeId);
-      if (emp && deptStats[emp.department]) {
-        deptStats[emp.department].totalHours += (r.hoursCompleted || 0);
-      }
-    });
-
-    // Actionable alerts: Employees with < 15 hours of training
-    const employeeHoursMap: Record<string, number> = {};
-    employees.forEach(e => { employeeHoursMap[e.id] = 0; });
-    records.filter(r => r.status === 'passed').forEach(r => {
-      employeeHoursMap[r.employeeId] = (employeeHoursMap[r.employeeId] || 0) + (r.hoursCompleted || 0);
-    });
-    const needTrainingEmployees = employees.filter(e => (employeeHoursMap[e.id] || 0) < 15);
-
-    // Recent training records (last 5)
-    const recentRecords = [...records]
-      .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime())
-      .slice(0, 5);
+    const completedCount = complaints.filter(
+      (c) => c.status === 'completed' || c.status === 'closed'
+    ).length;
+    const overdueCount = complaints.filter((c) => isComplaintOverdue(c)).length;
 
     return {
-      totalEmployees,
-      totalCourses,
-      passedEmployeesCount,
-      inDevelopmentCount,
-      totalHoursDelivered,
-      averageHoursPerEmployee,
-      upcomingCourses,
-      categoryCounts,
-      monthlyStats,
-      deptStats,
-      needTrainingEmployees,
-      recentRecords,
-      passRate: records.length > 0 ? Math.round((records.filter(r => r.status === 'passed').length / records.length) * 100) : 0
+      total,
+      newCount,
+      activeInProgress,
+      completedCount,
+      overdueCount
     };
-  }, [employees, activeCourses, records]);
+  }, [complaints]);
 
-  // Max value for monthly chart scaling
-  const maxMonthlyCount = useMemo(() => {
-    const counts = Object.values(metrics.monthlyStats).map(m => m.count);
-    return Math.max(...counts, 4);
-  }, [metrics.monthlyStats]);
+  // Monthly statistics derived from receivedDate
+  const monthlySeries = useMemo(() => {
+    const monthBuckets: Record<string, { month: string; total: number; completed: number }> = {};
+    complaints.forEach((c) => {
+      const ym = c.receivedDate.slice(0, 7);
+      if (!ym) return;
+      if (!monthBuckets[ym]) {
+        monthBuckets[ym] = { month: ym, total: 0, completed: 0 };
+      }
+      monthBuckets[ym].total += 1;
+      if (c.status === 'completed' || c.status === 'closed') {
+        monthBuckets[ym].completed += 1;
+      }
+    });
+    const sorted = Object.values(monthBuckets).sort((a, b) => a.month.localeCompare(b.month));
+    return sorted.slice(-6);
+  }, [complaints]);
 
-  // Format today's Thai date
-  const todayThaiFormatted = useMemo(() => {
-    const now = new Date();
-    const monthsThai = [
-      'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
-      'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
-    ];
-    return `${now.getDate()} ${monthsThai[now.getMonth()]} ${now.getFullYear() + 543}`;
-  }, []);
+  const maxMonthlyVal = Math.max(...monthlySeries.map((m) => m.total), 1);
+
+  // Category distribution derived from complaints
+  const categoryBreakdown = useMemo(() => {
+    const counts: Record<string, number> = {};
+    complaints.forEach((c) => {
+      counts[c.category] = (counts[c.category] || 0) + 1;
+    });
+    return Object.entries(CATEGORY_META)
+      .map(([key, meta]) => ({
+        key,
+        label: meta.shortTh,
+        colorHex: meta.colorHex,
+        count: counts[key] || 0,
+        percent: complaints.length > 0 ? Math.round(((counts[key] || 0) / complaints.length) * 100) : 0
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [complaints]);
+
+  // Latest 6 complaints
+  const recentComplaints = useMemo(() => {
+    return [...complaints]
+      .sort((a, b) => b.receivedDate.localeCompare(a.receivedDate) || b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 6);
+  }, [complaints]);
 
   return (
     <div className="space-y-6">
-      {/* Page Header (Modern Government Style) */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-[#E5EAF0] shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-[#718096] mb-1">
-            <span className="font-semibold text-[#245B91]">ศาลากลางจังหวัดสงขลา</span>
-            <span aria-hidden="true">·</span>
-            <span>ฝ่ายทรัพยากรบุคคล</span>
-            <span aria-hidden="true">·</span>
-            <span className="flex items-center gap-1 font-mono-numbers text-slate-600">
-              <CalendarDays className="w-3.5 h-3.5 text-[#C5A45A]" />
-              {todayThaiFormatted}
-            </span>
+      {/* Welcome Banner (Single Focal Anchor) */}
+      <div className="bg-[#0B1F36] text-white rounded-xl p-6 border border-[#183354] flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+        <div className="space-y-1.5 max-w-2xl">
+          <div className="text-xs font-medium text-[#C5A45A]">
+            ศูนย์ดำรงธรรมจังหวัดสงขลา · ศาลากลางจังหวัดสงขลา
           </div>
-          <h1 className="text-xl sm:text-2xl font-bold text-[#102C4C] tracking-tight">
-            ภาพรวมระบบทะเบียนและติดตามการพัฒนาบุคลากร (HRD Overview)
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+            สวัสดีครับ, {officerName}
           </h1>
-          <p className="text-xs sm:text-sm text-[#718096] mt-1 leading-relaxed max-w-2xl">
-            สรุปข้อมูลสถิติการพัฒนาสมรรถนะบุคลากร ติดตามเป้าหมาย 30 ชั่วโมงต่อปี และการจัดหลักสูตรฝึกอบรม
+          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+            ระบบจัดการข้อมูลและติดตามเรื่องร้องเรียนร้องทุกข์ (SONGKHLA DAMRONGDHAM CONNECT)
+            เพื่อติดตามความคืบหน้าและประสานงานช่วยเหลือประชาชนอย่างเป็นระบบ
           </p>
         </div>
 
-        {/* Controls: Fiscal Year Selector + Export Button */}
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          <div className="flex items-center gap-1.5 bg-[#F3F6FA] px-3 py-1.5 rounded-xl border border-[#E5EAF0] text-xs">
-            <span className="text-slate-500 font-medium">ปีงบประมาณ:</span>
-            <select
-              value={selectedFiscalYear}
-              onChange={(e) => setSelectedFiscalYear(e.target.value)}
-              className="bg-transparent font-bold text-[#102C4C] cursor-pointer focus:outline-none font-mono-numbers"
-            >
-              <option value="2569">2569 (ปีปัจจุบัน)</option>
-              <option value="2568">2568 (ย้อนหลัง)</option>
-              <option value="all">ทั้งหมด</option>
-            </select>
+        <div className="flex flex-col sm:flex-row lg:flex-col items-start sm:items-center lg:items-end justify-between gap-3 shrink-0 border-t lg:border-t-0 pt-4 lg:pt-0 border-white/10">
+          <div className="text-left lg:text-right">
+            <div className="text-xs text-slate-300 flex items-center lg:justify-end gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-[#C5A45A]" />
+              <span>{thaiDateTimeStr.datePart}</span>
+            </div>
+            <div className="text-lg sm:text-xl font-mono-numbers font-bold text-white mt-0.5">
+              เวลา {thaiDateTimeStr.timePart} น.
+            </div>
           </div>
 
           <button
-            onClick={() => onNavigateTab('reports')}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-[#E5EAF0] hover:bg-slate-50 rounded-xl shadow-xs transition-colors cursor-pointer"
+            onClick={() => onNavigateTab('intake')}
+            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-[#0B1F36] bg-[#C5A45A] hover:bg-[#d5b56b] rounded-lg transition-colors cursor-pointer whitespace-nowrap"
           >
-            <Download className="w-3.5 h-3.5 text-[#245B91]" />
-            <span>ส่งออกรายงาน</span>
-          </button>
-
-          <button
-            onClick={() => onOpenQuickAction('attendance')}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[#102C4C] hover:bg-[#245B91] rounded-xl shadow-xs transition-colors cursor-pointer"
-          >
-            <PlusCircle className="w-3.5 h-3.5 text-[#C5A45A]" />
-            <span>บันทึกการอบรม</span>
+            <FilePlus2 className="w-4 h-4" />
+            <span>บันทึกเรื่องร้องเรียนใหม่</span>
           </button>
         </div>
       </div>
 
-      {/* 4 Primary Statistics Cards (Per Section 5 of Master Prompt) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Total Employees */}
-        <div 
-          onClick={() => onNavigateTab('employees')}
-          className="bg-white rounded-2xl border border-[#E5EAF0] p-5 shadow-[0_2px_8px_rgba(0,0,0,0.03)] hover:border-[#245B91]/40 hover:shadow-md transition-all cursor-pointer group"
+      {/* 5 Summary KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <button
+          onClick={() => onNavigateTab('registry')}
+          className="bg-white rounded-xl border border-[#E5EAF0] p-4 text-left hover:border-[#1D4ED8]/50 transition-colors cursor-pointer"
         >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-[#718096]">บุคลากรทั้งหมด</span>
-            <div className="w-9 h-9 rounded-xl bg-[#245B91]/10 text-[#245B91] flex items-center justify-center group-hover:scale-105 transition-transform">
-              <Users className="w-4 h-4" />
-            </div>
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <span>เรื่องร้องเรียนทั้งหมด</span>
+            <FileText className="w-4 h-4 text-[#102C4C]" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold text-[#1B2B3A] font-mono-numbers">
-            {metrics.totalEmployees} <span className="text-xs font-normal text-slate-500">คน</span>
+          <div className="mt-2.5 flex items-baseline gap-1.5">
+            <span className="text-2xl font-bold font-mono-numbers text-[#102C4C]">{kpis.total}</span>
+            <span className="text-xs text-slate-500">เรื่อง</span>
           </div>
-          <div className="mt-2 text-[11px] text-[#718096] flex items-center justify-between border-t border-slate-100 pt-2">
-            <span>ฐานข้อมูลศาลากลาง</span>
-            <span className="text-[#245B91] font-semibold font-mono-numbers">100% Active</span>
-          </div>
-        </div>
+          <div className="mt-1 text-[11px] text-slate-500">ทะเบียนรับเรื่องในระบบ</div>
+        </button>
 
-        {/* Card 2: Training Courses */}
-        <div 
-          onClick={() => onNavigateTab('courses')}
-          className="bg-white rounded-2xl border border-[#E5EAF0] p-5 shadow-[0_2px_8px_rgba(0,0,0,0.03)] hover:border-[#245B91]/40 hover:shadow-md transition-all cursor-pointer group"
+        <button
+          onClick={() => onNavigateTab('assignment')}
+          className="bg-white rounded-xl border border-[#E5EAF0] p-4 text-left hover:border-blue-400 transition-colors cursor-pointer"
         >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-[#718096]">หลักสูตรฝึกอบรม</span>
-            <div className="w-9 h-9 rounded-xl bg-[#102C4C]/10 text-[#102C4C] flex items-center justify-center group-hover:scale-105 transition-transform">
-              <BookOpen className="w-4 h-4" />
-            </div>
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <span>เรื่องที่รับใหม่</span>
+            <Inbox className="w-4 h-4 text-blue-600" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold text-[#1B2B3A] font-mono-numbers">
-            {metrics.totalCourses} <span className="text-xs font-normal text-slate-500">โครงการ</span>
+          <div className="mt-2.5 flex items-baseline gap-1.5">
+            <span className="text-2xl font-bold font-mono-numbers text-blue-700">{kpis.newCount}</span>
+            <span className="text-xs text-slate-500">เรื่อง</span>
           </div>
-          <div className="mt-2 text-[11px] text-[#718096] flex items-center justify-between border-t border-slate-100 pt-2">
-            <span>ปีงบประมาณ {selectedFiscalYear}</span>
-            <span className="text-[#102C4C] font-semibold font-mono-numbers">
-              {metrics.upcomingCourses.length} กำลังจัด
-            </span>
-          </div>
-        </div>
+          <div className="mt-1 text-[11px] text-blue-700 font-medium">รอมอบหมายเจ้าหน้าที่</div>
+        </button>
 
-        {/* Card 3: Passed Employees */}
-        <div 
-          onClick={() => onNavigateTab('attendance')}
-          className="bg-white rounded-2xl border border-[#E5EAF0] p-5 shadow-[0_2px_8px_rgba(0,0,0,0.03)] hover:border-[#23865B]/40 hover:shadow-md transition-all cursor-pointer group"
+        <button
+          onClick={() => onNavigateTab('tracking')}
+          className="bg-white rounded-xl border border-[#E5EAF0] p-4 text-left hover:border-amber-400 transition-colors cursor-pointer"
         >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-[#23865B]">ผู้ผ่านการอบรม</span>
-            <div className="w-9 h-9 rounded-xl bg-[#23865B]/10 text-[#23865B] flex items-center justify-center group-hover:scale-105 transition-transform">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <span>อยู่ระหว่างดำเนินการ</span>
+            <Clock className="w-4 h-4 text-amber-600" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold text-[#23865B] font-mono-numbers">
-            {metrics.passedEmployeesCount} <span className="text-xs font-normal text-slate-500">คน</span>
+          <div className="mt-2.5 flex items-baseline gap-1.5">
+            <span className="text-2xl font-bold font-mono-numbers text-amber-700">{kpis.activeInProgress}</span>
+            <span className="text-xs text-slate-500">เรื่อง</span>
           </div>
-          <div className="mt-2 text-[11px] text-[#718096] flex items-center justify-between border-t border-slate-100 pt-2">
-            <span>ได้รับวุฒิบัตรรับรอง</span>
-            <span className="text-[#23865B] font-semibold font-mono-numbers">
-              {metrics.totalEmployees > 0 ? Math.round((metrics.passedEmployeesCount / metrics.totalEmployees) * 100) : 0}% อัตราผ่าน
-            </span>
-          </div>
-        </div>
+          <div className="mt-1 text-[11px] text-slate-500">ตรวจสอบ/ประสาน/ดำเนินการ</div>
+        </button>
 
-        {/* Card 4: Hours of Development */}
-        <div 
-          onClick={() => onNavigateTab('development')}
-          className="bg-white rounded-2xl border border-[#E5EAF0] p-5 shadow-[0_2px_8px_rgba(0,0,0,0.03)] hover:border-[#C5A45A]/60 hover:shadow-md transition-all cursor-pointer group"
+        <button
+          onClick={() => onNavigateTab('reports')}
+          className="bg-white rounded-xl border border-[#E5EAF0] p-4 text-left hover:border-emerald-400 transition-colors cursor-pointer"
         >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-[#C5A45A]">ชั่วโมงการพัฒนาบุคลากร</span>
-            <div className="w-9 h-9 rounded-xl bg-[#C5A45A]/15 text-[#C5A45A] flex items-center justify-center group-hover:scale-105 transition-transform">
-              <Award className="w-4 h-4" />
-            </div>
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <span>ดำเนินการเสร็จสิ้น</span>
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold text-[#102C4C] font-mono-numbers">
-            {metrics.totalHoursDelivered} <span className="text-xs font-normal text-slate-500">ชม.</span>
+          <div className="mt-2.5 flex items-baseline gap-1.5">
+            <span className="text-2xl font-bold font-mono-numbers text-emerald-700">{kpis.completedCount}</span>
+            <span className="text-xs text-slate-500">เรื่อง</span>
           </div>
-          <div className="mt-2 text-[11px] text-[#718096] flex items-center justify-between border-t border-slate-100 pt-2">
-            <span>เฉลี่ยต่อคน</span>
-            <span className="font-mono-numbers font-bold text-[#102C4C]">
-              {metrics.averageHoursPerEmployee} ชม. / 30 ชม.
-            </span>
+          <div className="mt-1 text-[11px] text-emerald-700 font-medium">
+            {kpis.total > 0 ? Math.round((kpis.completedCount / kpis.total) * 100) : 0}% ของเรื่องทั้งหมด
           </div>
-        </div>
+        </button>
+
+        <button
+          onClick={onFilterOverdueInRegistry}
+          className="bg-white rounded-xl border border-[#E5EAF0] p-4 text-left hover:border-rose-400 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <span>เกินกำหนดติดตาม</span>
+            <AlertTriangle className="w-4 h-4 text-rose-600" />
+          </div>
+          <div className="mt-2.5 flex items-baseline gap-1.5">
+            <span className="text-2xl font-bold font-mono-numbers text-rose-700">{kpis.overdueCount}</span>
+            <span className="text-xs text-slate-500">เรื่อง</span>
+          </div>
+          <div className="mt-1 text-[11px] text-rose-700 font-medium">เลยวันกำหนดติดตามผล</div>
+        </button>
       </div>
 
-      {/* Analytics Charts Section (Grid: Monthly Attendance + Category Competency) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Monthly Attendance Chart */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-[#E5EAF0] p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      {/* Charts Row: Monthly Complaints & Category Breakdown */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Monthly Bar Chart */}
+        <div className="lg:col-span-7 bg-white rounded-xl border border-[#E5EAF0] p-6 flex flex-col justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
             <div>
-              <h2 className="text-base font-bold text-[#102C4C]">
-                สถิติการเข้าร่วมอบรมรายเดือน (Monthly Training Participation)
-              </h2>
-              <p className="text-xs text-[#718096]">
-                จำนวนบุคลากรที่เข้าร่วมกิจกรรมฝึกอบรมในแต่ละเดือนตลอดปีงบประมาณ {selectedFiscalYear}
+              <h2 className="text-base font-bold text-[#102C4C]">จำนวนเรื่องร้องเรียนรายเดือน</h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                เปรียบเทียบจำนวนเรื่องรับเข้าทั้งหมดกับเรื่องที่ดำเนินการเสร็จสิ้น
               </p>
             </div>
-            <div className="flex items-center gap-3 text-xs text-slate-500">
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm bg-[#102C4C]" />
-                ผู้เข้าร่วม (คน)
+            <div className="flex items-center gap-4 text-xs text-slate-600">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-xs bg-[#102C4C]" />
+                <span>รับเรื่องทั้งหมด</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-xs bg-[#C5A45A]" />
+                <span>เสร็จสิ้น/ยุติเรื่อง</span>
               </span>
             </div>
           </div>
 
-          {/* Bar Chart Container */}
-          <div className="pt-6 pb-2">
-            <div className="h-44 flex items-end justify-between gap-2 border-b border-[#E5EAF0] px-1">
-              {Object.entries(metrics.monthlyStats).map(([monthKey, mData]) => {
-                const heightPercent = maxMonthlyCount > 0 ? (mData.count / maxMonthlyCount) * 100 : 0;
-                const isHighlight = mData.count > 0;
+          {monthlySeries.length === 0 ? (
+            <div className="h-52 flex items-center justify-center text-xs text-slate-400">
+              ยังไม่มีข้อมูลรายเดือน
+            </div>
+          ) : (
+            <div className="h-56 flex items-end justify-between gap-3 pt-4 border-b border-[#E5EAF0] pb-2">
+              {monthlySeries.map((item) => {
+                const totalHeightPct = Math.max(10, Math.round((item.total / maxMonthlyVal) * 100));
+                const doneHeightPct = item.completed > 0 ? Math.max(10, Math.round((item.completed / maxMonthlyVal) * 100)) : 0;
 
                 return (
-                  <div key={monthKey} className="flex-1 flex flex-col items-center h-full justify-end group relative">
-                    {/* Tooltip */}
-                    <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-[#0B1F36] text-white text-[10px] py-1 px-2.5 rounded-lg whitespace-nowrap pointer-events-none z-20 shadow-md">
-                      <div>เดือน {mData.monthName}: {mData.count} คน</div>
-                      <div>ผ่าน {mData.hours} ชั่วโมง</div>
+                  <div key={item.month} className="flex-1 flex flex-col items-center gap-2 h-full justify-end">
+                    <div className="w-full flex items-end justify-center gap-1.5 h-40">
+                      <div className="flex flex-col items-center justify-end h-full w-6 sm:w-8">
+                        <span className="text-[11px] font-mono-numbers font-semibold text-[#102C4C] mb-1">
+                          {item.total}
+                        </span>
+                        <div
+                          className="w-full bg-[#102C4C] rounded-t transition-all duration-300"
+                          style={{ height: `${totalHeightPct}%` }}
+                          title={`ทั้งหมด ${item.total} เรื่อง`}
+                        />
+                      </div>
+                      <div className="flex flex-col items-center justify-end h-full w-6 sm:w-8">
+                        <span className="text-[11px] font-mono-numbers font-semibold text-[#A17E34] mb-1">
+                          {item.completed}
+                        </span>
+                        <div
+                          className="w-full bg-[#C5A45A] rounded-t transition-all duration-300"
+                          style={{ height: `${doneHeightPct}%` }}
+                          title={`เสร็จสิ้น ${item.completed} เรื่อง`}
+                        />
+                      </div>
                     </div>
-
-                    {/* Bar */}
-                    <div 
-                      className={`w-full max-w-[28px] rounded-t-md transition-all duration-300 ${
-                        isHighlight ? 'bg-[#102C4C] hover:bg-[#245B91]' : 'bg-[#E5EAF0]'
-                      }`}
-                      style={{ height: `${Math.max(heightPercent, 6)}%` }}
-                    />
-                    
-                    {/* X-axis Label */}
-                    <span className="text-[11px] font-medium text-[#718096] mt-2">
-                      {mData.monthName}
+                    <span className="text-[11px] font-medium text-slate-600 whitespace-nowrap">
+                      {formatThaiMonthLabel(item.month)}
                     </span>
                   </div>
                 );
               })}
             </div>
-          </div>
+          )}
 
-          <div className="flex flex-wrap items-center justify-between text-xs text-[#718096] pt-1">
-            <span>คำนวณจากบันทึกการเข้าร่วมและประเมินผลจริง</span>
-            <button 
-              onClick={() => onNavigateTab('reports')}
-              className="text-[#245B91] hover:underline font-semibold inline-flex items-center gap-1 cursor-pointer"
+          <div className="pt-3 flex items-center justify-between text-xs text-slate-500">
+            <span>ข้อมูลคำนวณจากวันที่รับเรื่องจริงในทะเบียน</span>
+            <button
+              onClick={() => onNavigateTab('analytics')}
+              className="text-[#1D4ED8] font-semibold hover:underline inline-flex items-center gap-1 cursor-pointer"
             >
-              เปิดรายงานสถิติละเอียด
+              <span>ดูสถิติเชิงลึก</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
 
-        {/* Competency & Category Distribution */}
-        <div className="bg-white rounded-2xl border border-[#E5EAF0] p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-bold text-[#102C4C]">สัดส่วนตามหมวดหมู่</h2>
-              <p className="text-xs text-[#718096]">การกระจายตัวของหลักสูตรพัฒนา</p>
-            </div>
-            <Award className="w-5 h-5 text-[#C5A45A]" />
+        {/* Complaint Category Breakdown */}
+        <div className="lg:col-span-5 bg-white rounded-xl border border-[#E5EAF0] p-6 flex flex-col justify-between">
+          <div className="mb-4">
+            <h2 className="text-base font-bold text-[#102C4C]">สัดส่วนประเภทเรื่องร้องเรียน</h2>
+            <p className="text-xs text-slate-500 mt-0.5">จำแนกตามหมวดหมู่ปัญหาที่ประชาชนแจ้งเข้ามา</p>
           </div>
 
-          <div className="space-y-3 pt-2">
-            {Object.entries(COURSE_CATEGORY_LABELS).map(([catKey, catInfo]) => {
-              const count = metrics.categoryCounts[catKey] || 0;
-              const maxCount = Math.max(...Object.values(metrics.categoryCounts), 1);
-              const percentage = Math.round((count / (metrics.totalCourses || 1)) * 100);
-              const barWidth = Math.round((count / maxCount) * 100);
-
-              return (
-                <div key={catKey} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-700 font-medium truncate max-w-[170px]" title={catInfo.labelTh}>
-                      {catInfo.labelTh}
-                    </span>
-                    <span className="text-[#102C4C] font-mono-numbers font-semibold">
-                      {count} ({percentage}%)
-                    </span>
-                  </div>
-                  <div className="w-full bg-[#F3F6FA] rounded-full h-2 overflow-hidden border border-[#E5EAF0]">
-                    <div 
-                      className="bg-[#245B91] h-full rounded-full transition-all duration-300"
-                      style={{ width: `${Math.max(barWidth, count > 0 ? 8 : 0)}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="pt-2 border-t border-slate-100 text-xs text-[#718096] flex items-center justify-between">
-            <span>อัตราผ่านการอบรมโดยรวม:</span>
-            <span className="font-bold text-[#23865B] font-mono-numbers">{metrics.passRate}%</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Row 3: Upcoming Courses & Actionable Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Actionable Alerts Box */}
-        <div className="bg-white rounded-2xl border border-[#E5EAF0] p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-amber-50 text-[#D69E36] flex items-center justify-center">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-[#102C4C]">การแจ้งเตือนงาน HR</h2>
-                <p className="text-xs text-[#718096]">รายการที่ต้องติดตามและกำกับ</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2.5">
-            {metrics.needTrainingEmployees.length > 0 ? (
-              <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl text-xs space-y-1.5">
-                <div className="font-semibold text-amber-900 flex items-center justify-between">
-                  <span>เป้าหมายเกณฑ์ ก.พ. (30 ชม./ปี)</span>
-                  <span className="font-mono-numbers font-bold text-amber-800">
-                    {metrics.needTrainingEmployees.length} คนยังไม่ครบ
+          <div className="space-y-3 flex-1">
+            {categoryBreakdown.slice(0, 6).map((cat) => (
+              <div key={cat.key} className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-medium text-[#1B2B3A] truncate pr-2">{cat.label}</span>
+                  <span className="font-mono-numbers text-slate-600 shrink-0">
+                    <strong className="text-[#102C4C]">{cat.count}</strong> เรื่อง ({cat.percent}%)
                   </span>
                 </div>
-                <p className="text-[11px] text-amber-800 leading-relaxed">
-                  มีบุคลากร {metrics.needTrainingEmployees.length} คนที่มีชั่วโมงสะสมน้อยกว่า 15 ชั่วโมง ควรกำกับให้ลงทะเบียนในหลักสูตรไตรมาสถัดไป
-                </p>
-                <div className="pt-1 flex flex-wrap gap-1">
-                  {metrics.needTrainingEmployees.slice(0, 3).map(e => (
-                    <button
-                      key={e.id}
-                      onClick={() => onSelectEmployee(e)}
-                      className="text-[10px] px-2 py-0.5 bg-white text-slate-800 rounded-md border border-amber-200 hover:bg-amber-100 cursor-pointer"
-                    >
-                      {e.prefix}{e.firstName} ({e.positionLevel})
-                    </button>
-                  ))}
-                  {metrics.needTrainingEmployees.length > 3 && (
-                    <span className="text-[10px] text-amber-700 self-center">
-                      +{metrics.needTrainingEmployees.length - 3} คน
-                    </span>
-                  )}
+                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{ width: `${cat.percent}%`, backgroundColor: cat.colorHex }}
+                  />
                 </div>
               </div>
-            ) : (
-              <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-[#23865B] flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-[#23865B] shrink-0" />
-                <span>บุคลากรทุกคนมีชั่วโมงการอบรมสะสมตามเกณฑ์มาตรฐานขั้นต่ำ</span>
-              </div>
-            )}
-
-            {/* Upcoming registration alert */}
-            <div className="p-3.5 bg-[#F3F6FA] border border-[#E5EAF0] rounded-xl text-xs space-y-1">
-              <div className="font-semibold text-[#102C4C] flex items-center justify-between">
-                <span>หลักสูตรเปิดรับสมัครรอบใหม่</span>
-                <span className="font-mono-numbers text-[#245B91] font-bold">
-                  {metrics.upcomingCourses.length} หลักสูตร
-                </span>
-              </div>
-              <p className="text-[11px] text-[#718096]">
-                เปิดให้หน่วยงานภายในส่งรายชื่อผู้เข้าร่วมอบรมผ่านระบบแล้ว
-              </p>
-            </div>
+            ))}
           </div>
 
-          <button
-            onClick={() => onNavigateTab('attendance')}
-            className="w-full py-2.5 text-xs font-semibold text-[#102C4C] bg-[#F3F6FA] hover:bg-slate-200/80 rounded-xl border border-[#E5EAF0] transition-colors text-center cursor-pointer"
-          >
-            ไปที่ระบบบันทึกการเข้าร่วมอบรม
-          </button>
-        </div>
-
-        {/* Upcoming Courses Cards */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-[#E5EAF0] p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-bold text-[#102C4C]">
-                หลักสูตรและโครงการที่กำลังจะจัดขึ้น (Upcoming Programs)
-              </h2>
-              <p className="text-xs text-[#718096]">
-                กำหนดการจัดฝึกอบรมประจำเดือนพฤศจิกายน - ธันวาคม 2569
-              </p>
-            </div>
+          <div className="pt-4 mt-3 border-t border-[#E5EAF0] flex items-center justify-between text-xs text-slate-500">
+            <span>ครอบคลุม {Object.keys(CATEGORY_META).length} หมวดหมู่</span>
             <button
-              onClick={() => onNavigateTab('courses')}
-              className="text-xs text-[#245B91] hover:underline font-semibold flex items-center gap-1 cursor-pointer"
+              onClick={() => onNavigateTab('reports')}
+              className="text-[#1D4ED8] font-semibold hover:underline inline-flex items-center gap-1 cursor-pointer"
             >
-              ดูทั้งหมด ({activeCourses.length})
-              <ChevronRight className="w-3.5 h-3.5" />
+              <span>รายงานสรุป</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
-            {metrics.upcomingCourses.length === 0 ? (
-              <p className="text-xs text-slate-400 italic py-6 col-span-2 text-center">
-                ไม่มีหลักสูตรใหม่ที่กำลังจะจัดขึ้นในขณะนี้
-              </p>
-            ) : (
-              metrics.upcomingCourses.slice(0, 4).map((course) => {
-                const cat = COURSE_CATEGORY_LABELS[course.category];
-                return (
-                  <div
-                    key={course.id}
-                    onClick={() => onSelectCourse(course)}
-                    className="p-4 rounded-xl border border-[#E5EAF0] hover:border-[#245B91] hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between space-y-2.5 bg-[#F3F6FA]/50 group"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between text-xs mb-1">
-                        <span className="font-mono-numbers font-bold text-[#102C4C] bg-white px-2 py-0.5 rounded-md border border-[#E5EAF0]">
-                          {course.courseCode}
-                        </span>
-                        <span className="font-mono-numbers text-[#C5A45A] font-semibold flex items-center gap-1 text-[11px]">
-                          <Clock className="w-3 h-3" />
-                          {course.hours} ชั่วโมง
-                        </span>
-                      </div>
-                      <h3 className="font-bold text-[#1B2B3A] text-xs sm:text-sm line-clamp-2 leading-snug group-hover:text-[#245B91] transition-colors">
-                        {course.title}
-                      </h3>
-                    </div>
-
-                    <div className="pt-2 border-t border-slate-200/80 text-[11px] text-[#718096] space-y-1">
-                      <div className="flex items-center gap-1.5 font-mono-numbers">
-                        <Calendar className="w-3 h-3 text-slate-400" />
-                        <span>{course.startDate} ถึง {course.endDate}</span>
-                      </div>
-                      <div className="truncate">
-                        ผู้จัด: {course.organizer}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
           </div>
         </div>
       </div>
 
-      {/* Row 4: Recent Training Records & Audit Logs */}
-      <div className="bg-white rounded-2xl border border-[#E5EAF0] p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-4">
-        <div className="flex items-center justify-between">
+      {/* Recent Complaints Table */}
+      <div className="bg-white rounded-xl border border-[#E5EAF0] overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#E5EAF0] flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-bold text-[#102C4C]">
-              บันทึกกิจกรรมและความเคลื่อนไหวล่าสุด (Recent HR Activities)
-            </h2>
-            <p className="text-xs text-[#718096]">
-              ประวัติการเพิ่ม แก้ไข หรือประเมินผลการอบรมในระบบ
+            <h2 className="text-base font-bold text-[#102C4C]">รายการเรื่องร้องเรียนล่าสุด</h2>
+            <p className="text-xs text-slate-500">
+              แสดงรายการรับเรื่องล่าสุดพร้อมสถานะการดำเนินงานและหน่วยงานรับผิดชอบ
             </p>
           </div>
           <button
-            onClick={() => onNavigateTab('settings')}
-            className="text-xs text-[#245B91] hover:underline font-semibold flex items-center gap-1 cursor-pointer"
+            onClick={() => onNavigateTab('registry')}
+            className="text-xs font-semibold text-[#1D4ED8] hover:underline inline-flex items-center gap-1 cursor-pointer"
           >
-            ดู Audit Logs ทั้งหมด
-            <ChevronRight className="w-3.5 h-3.5" />
+            <span>ดูทะเบียนเรื่องร้องเรียนทั้งหมด</span>
+            <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <div className="space-y-2">
-          {logs.slice(0, 4).map((log) => (
-            <div 
-              key={log.id} 
-              className="p-3 rounded-xl bg-[#F3F6FA] border border-[#E5EAF0] text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-            >
-              <div className="flex items-start gap-2.5">
-                <div className="w-7 h-7 rounded-lg bg-[#102C4C] text-[#C5A45A] flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5 sm:mt-0">
-                  HR
-                </div>
-                <div>
-                  <p className="font-semibold text-[#1B2B3A] leading-relaxed">
-                    {log.details}
-                  </p>
-                  <div className="text-[11px] text-[#718096] mt-0.5 flex items-center gap-2">
-                    <span>โดย: <strong className="text-slate-800">{log.userName}</strong></span>
-                    <span>·</span>
-                    <span className="font-mono-numbers">{new Date(log.timestamp).toLocaleString('th-TH')}</span>
-                  </div>
-                </div>
-              </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead className="bg-[#F8FAFC] text-slate-600 border-b border-[#E5EAF0]">
+              <tr>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">เลขที่รับเรื่อง</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">วันที่รับเรื่อง</th>
+                <th className="py-3 px-4 font-semibold">หัวข้อเรื่อง / พื้นที่</th>
+                <th className="py-3 px-4 font-semibold hidden md:table-cell">หน่วยงานที่เกี่ยวข้อง</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">ความเร่งด่วน</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">สถานะ</th>
+                <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">ดูข้อมูล</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#E5EAF0]">
+              {recentComplaints.map((item) => {
+                const statusMeta = STATUS_META[item.status];
+                const urgencyMeta = URGENCY_META[item.urgency];
+                const overdue = isComplaintOverdue(item);
 
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white text-slate-700 border border-[#E5EAF0] self-start sm:self-center font-mono uppercase">
-                {log.action}
-              </span>
-            </div>
-          ))}
+                return (
+                  <tr
+                    key={item.id}
+                    onClick={() => onSelectComplaintDetail(item)}
+                    className="hover:bg-[#F8FAFC] transition-colors cursor-pointer"
+                  >
+                    <td className="py-3 px-4 font-mono-numbers font-semibold text-[#102C4C] whitespace-nowrap">
+                      {item.caseNumber}
+                    </td>
+                    <td className="py-3 px-4 font-mono-numbers text-slate-600 whitespace-nowrap">
+                      {formatThaiDate(item.receivedDate)}
+                    </td>
+                    <td className="py-3 px-4 max-w-xs">
+                      <div className="font-semibold text-[#102C4C] truncate">{item.subject}</div>
+                      <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                        {item.complainantName} · {item.district}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 text-slate-600 hidden md:table-cell max-w-[200px] truncate">
+                      <span className="inline-flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="truncate">{item.responsibleAgency}</span>
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <span className={`font-semibold ${urgencyMeta.textColor}`}>
+                        {urgencyMeta.labelTh}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <div className="flex flex-col gap-0.5">
+                        <span className={`inline-flex items-center gap-1.5 font-semibold ${statusMeta.textColor}`}>
+                          <span className={`w-2 h-2 rounded-full ${statusMeta.dotColor}`} />
+                          <span>{statusMeta.labelTh}</span>
+                        </span>
+                        {overdue && (
+                          <span className="text-[10px] text-rose-700 font-medium">เกินกำหนดติดตาม</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 text-right whitespace-nowrap">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectComplaintDetail(item);
+                        }}
+                        className="p-1.5 text-slate-500 hover:text-[#102C4C] hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                        title="เปิดดูรายละเอียด"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

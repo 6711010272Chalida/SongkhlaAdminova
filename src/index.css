@@ -3,18 +3,14 @@
 :root {
   --color-primary-navy: #102C4C;
   --color-deep-navy: #0B1F36;
-  --color-royal-blue: #245B91;
-  --color-accent-blue: #397DB5;
+  --color-royal-blue: #1D4ED8;
+  --color-accent-blue: #2563EB;
   --color-gold: #C5A45A;
   --color-bg: #F3F6FA;
   --color-surface: #FFFFFF;
   --color-border: #E5EAF0;
   --color-text-primary: #1B2B3A;
-  --color-text-secondary: #718096;
-  --color-success: #23865B;
-  --color-warning: #D69E36;
-  --color-danger: #D9534F;
-  --color-info: #3985C6;
+  --color-text-secondary: #64748B;
 }
 
 @layer base {
@@ -23,7 +19,7 @@
     background-color: #F3F6FA;
     color: #1B2B3A;
   }
-  
+
   .font-brand {
     font-family: 'Plus Jakarta Sans', 'Sarabun', sans-serif;
   }
@@ -50,18 +46,37 @@
   background: #94a3b8;
 }
 
-/* Smooth transitions */
-.transition-layout {
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+/* Smooth transitions honoring prefers-reduced-motion */
+@media (prefers-reduced-motion: no-preference) {
+  .transition-layout {
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
 }
 
+/* Print stylesheet for Official PDF/Print Reports */
 @media print {
   aside, nav, header, .no-print {
     display: none !important;
   }
+  .print-only {
+    display: block !important;
+  }
+  body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
   main {
     margin: 0 !important;
     padding: 0 !important;
-    background: white !important;
+    max-width: 100% !important;
+    background: #FFFFFF !important;
+    overflow: visible !important;
   }
+  .print-break-inside-avoid {
+    break-inside: avoid;
+  }
+}
+
+.print-only {
+  display: none;
 }
